@@ -14,25 +14,17 @@ body {
   padding: 20px;
 }
 
-h1 { margin-bottom: 10px; }
-
 .current {
   font-size: 60px;
   margin: 20px 0;
   font-weight: bold;
 }
 
-.recent {
-  margin-top: 20px;
-  font-size: 18px;
-}
-
 button {
   margin: 10px;
   padding: 12px 20px;
-  font-size: 16px;
-  border: none;
   border-radius: 8px;
+  border: none;
   cursor: pointer;
 }
 
@@ -40,32 +32,9 @@ button {
 .reset { background: #dc3545; color: white; }
 .bingo { background: gold; color: black; }
 
-.overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0,0,0,0.95);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 999;
+.recent {
+  margin-top: 20px;
 }
-
-#overlayText {
-  font-size: 120px;
-  font-weight: bold;
-  color: gold;
-  animation: pop 0.4s ease;
-}
-
-@keyframes pop {
-  0% { transform: scale(0.5); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-.hidden { display: none; }
 </style>
 </head>
 
@@ -86,10 +55,6 @@ button {
   <div id="recentList"></div>
 </div>
 
-<div id="overlay" class="overlay hidden">
-  <div id="overlayText"></div>
-</div>
-
 <script>
 let numbers = [];
 let calledNumbers = [];
@@ -97,16 +62,14 @@ let calledNumbers = [];
 let isCalling = false;
 let isPaused = false;
 let isPlaying = false;
-
 let loopTimer = null;
 
 // ==========================
-// INIT GAME
+// INIT
 // ==========================
 function initGame() {
   numbers = Array.from({ length: 75 }, (_, i) => i + 1);
 
-  // shuffle
   for (let i = numbers.length - 1; i > 0; i--) {
     let j = Math.floor(Math.random() * (i + 1));
     [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
@@ -118,11 +81,10 @@ function initGame() {
   document.getElementById("recentList").textContent = "";
 
   clearTimeout(loopTimer);
-  loopTimer = null;
 }
 
 // ==========================
-// LETTER SYSTEM
+// LETTER
 // ==========================
 function getLetter(num) {
   if (num <= 15) return "B";
@@ -133,47 +95,43 @@ function getLetter(num) {
 }
 
 // ==========================
-// VOICE (FIXED FOR VERCEL)
+// 🔊 VOICE FIX (VERCEL SAFE)
 // ==========================
-function speak(text) {
-  const utterance = new SpeechSynthesisUtterance(text);
+let selectedVoice = null;
 
+// Load voices properly
+function loadVoices() {
   const voices = speechSynthesis.getVoices();
+  if (!voices.length) return;
 
-  const female =
+  selectedVoice =
     voices.find(v => v.name.toLowerCase().includes("female")) ||
     voices.find(v => v.lang.includes("en-US")) ||
     voices[0];
+}
 
-  if (female) utterance.voice = female;
+// Ensure voices load
+speechSynthesis.onvoiceschanged = loadVoices;
+setTimeout(loadVoices, 500);
 
+// Speak
+function speak(text) {
+  if (!selectedVoice) {
+    console.warn("No voice available");
+    return;
+  }
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.voice = selectedVoice;
   utterance.rate = 0.75;
   utterance.pitch = 1.2;
 
   speechSynthesis.cancel();
-
-  setTimeout(() => {
-    speechSynthesis.speak(utterance);
-  }, 50);
+  speechSynthesis.speak(utterance);
 }
 
 // ==========================
-// OVERLAY
-// ==========================
-function showOverlay(text) {
-  const overlay = document.getElementById("overlay");
-  const overlayText = document.getElementById("overlayText");
-
-  overlayText.textContent = text;
-  overlay.classList.remove("hidden");
-
-  setTimeout(() => {
-    overlay.classList.add("hidden");
-  }, 1500);
-}
-
-// ==========================
-// PLAY NUMBER (MP3 OR VOICE)
+// PLAY NUMBER
 // ==========================
 function playNumber(num) {
   return new Promise((resolve) => {
@@ -191,29 +149,24 @@ function playNumber(num) {
       resolve();
     };
 
-    // If audio plays → NO VOICE, NO OVERLAY
-    audio.onended = () => {
-      done();
-    };
+    // 🎧 If audio exists
+    audio.onended = done;
 
-    // If audio missing → VOICE + OVERLAY
+    // ❌ If no audio → use voice
     audio.onerror = () => {
       speak(label);
-      showOverlay(label);
-      setTimeout(done, 2000);
+      setTimeout(done, 2500);
     };
 
-    // extra safety
     audio.play().catch(() => {
       speak(label);
-      showOverlay(label);
-      setTimeout(done, 2000);
+      setTimeout(done, 2500);
     });
   });
 }
 
 // ==========================
-// MAIN LOOP (NO DUPLICATES)
+// LOOP
 // ==========================
 function loop() {
   if (!isCalling) return;
@@ -238,12 +191,14 @@ function loop() {
 }
 
 // ==========================
-// START / PAUSE / RESUME
+// START / PAUSE
 // ==========================
 function toggleCalling() {
   const btn = document.getElementById("startBtn");
 
-  // 🔥 unlock voice on first click (IMPORTANT for Vercel)
+  // 🔥 CRITICAL: unlock voice/audio
+  const unlock = new SpeechSynthesisUtterance(" ");
+  speechSynthesis.speak(unlock);
   speechSynthesis.cancel();
 
   if (!isCalling) {
@@ -272,16 +227,8 @@ function callBingo() {
 
   clearTimeout(loopTimer);
 
-  let randomBingo = Math.floor(Math.random() * 5) + 1;
-  const audio = new Audio("audio/Bingo" + randomBingo + ".mp3");
-
-  audio.play();
-
-  audio.onended = () => {
-    if (confirm("BINGO! Restart game?")) {
-      resetGame();
-    }
-  };
+  let rand = Math.floor(Math.random() * 5) + 1;
+  new Audio("audio/Bingo" + rand + ".mp3").play();
 }
 
 // ==========================
@@ -299,11 +246,8 @@ function resetGame() {
   initGame();
 }
 
-// ==========================
 // INIT
-// ==========================
 initGame();
-speechSynthesis.onvoiceschanged = () => {};
 </script>
 
 </body>
