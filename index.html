@@ -98,20 +98,20 @@ let isCalling = false;
 let isPaused = false;
 let isPlaying = false;
 
-let loopTimer = null; // 🔥 prevents duplicate loops
+let loopTimer = null;
 
-// Shuffle
-function shuffle(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    let j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-}
-
-// Init
+// ==========================
+// INIT GAME
+// ==========================
 function initGame() {
   numbers = Array.from({ length: 75 }, (_, i) => i + 1);
-  shuffle(numbers);
+
+  // shuffle
+  for (let i = numbers.length - 1; i > 0; i--) {
+    let j = Math.floor(Math.random() * (i + 1));
+    [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+  }
+
   calledNumbers = [];
 
   document.getElementById("currentBall").textContent = "--";
@@ -121,7 +121,9 @@ function initGame() {
   loopTimer = null;
 }
 
-// Letter system
+// ==========================
+// LETTER SYSTEM
+// ==========================
 function getLetter(num) {
   if (num <= 15) return "B";
   if (num <= 30) return "I";
@@ -130,14 +132,18 @@ function getLetter(num) {
   return "O";
 }
 
-// Voice (slow female style)
+// ==========================
+// VOICE (FIXED FOR VERCEL)
+// ==========================
 function speak(text) {
   const utterance = new SpeechSynthesisUtterance(text);
 
   const voices = speechSynthesis.getVoices();
+
   const female =
     voices.find(v => v.name.toLowerCase().includes("female")) ||
-    voices.find(v => v.lang.includes("en"));
+    voices.find(v => v.lang.includes("en-US")) ||
+    voices[0];
 
   if (female) utterance.voice = female;
 
@@ -145,10 +151,15 @@ function speak(text) {
   utterance.pitch = 1.2;
 
   speechSynthesis.cancel();
-  speechSynthesis.speak(utterance);
+
+  setTimeout(() => {
+    speechSynthesis.speak(utterance);
+  }, 50);
 }
 
-// Overlay
+// ==========================
+// OVERLAY
+// ==========================
 function showOverlay(text) {
   const overlay = document.getElementById("overlay");
   const overlayText = document.getElementById("overlayText");
@@ -161,7 +172,9 @@ function showOverlay(text) {
   }, 1500);
 }
 
-// 🔥 SAFE AUDIO PLAY
+// ==========================
+// PLAY NUMBER (MP3 OR VOICE)
+// ==========================
 function playNumber(num) {
   return new Promise((resolve) => {
     isPlaying = true;
@@ -178,37 +191,38 @@ function playNumber(num) {
       resolve();
     };
 
+    // If audio plays → NO VOICE, NO OVERLAY
     audio.onended = () => {
-      done(); // ONLY audio → no voice, no overlay
+      done();
     };
 
+    // If audio missing → VOICE + OVERLAY
     audio.onerror = () => {
       speak(label);
       showOverlay(label);
-
       setTimeout(done, 2000);
     };
 
+    // extra safety
     audio.play().catch(() => {
       speak(label);
       showOverlay(label);
-
       setTimeout(done, 2000);
     });
   });
 }
 
-// 🔥 MAIN LOOP (NO DUPLICATES)
-async function loop() {
+// ==========================
+// MAIN LOOP (NO DUPLICATES)
+// ==========================
+function loop() {
   if (!isCalling) return;
-  if (isPaused) {
+
+  if (isPaused || isPlaying) {
     loopTimer = setTimeout(loop, 500);
     return;
   }
-  if (isPlaying) {
-    loopTimer = setTimeout(loop, 500);
-    return;
-  }
+
   if (numbers.length === 0) return;
 
   const num = numbers.pop();
@@ -218,15 +232,19 @@ async function loop() {
   document.getElementById("recentList").textContent =
     calledNumbers.slice(0, 10).join(", ");
 
-  await playNumber(num);
-
-  // 🔥 FIXED 7 SECOND CYCLE (NO STACKING)
-  loopTimer = setTimeout(loop, 7000);
+  playNumber(num).then(() => {
+    loopTimer = setTimeout(loop, 7000);
+  });
 }
 
-// Start / Pause / Resume
+// ==========================
+// START / PAUSE / RESUME
+// ==========================
 function toggleCalling() {
   const btn = document.getElementById("startBtn");
+
+  // 🔥 unlock voice on first click (IMPORTANT for Vercel)
+  speechSynthesis.cancel();
 
   if (!isCalling) {
     isCalling = true;
@@ -245,13 +263,14 @@ function toggleCalling() {
   }
 }
 
-// Bingo
+// ==========================
+// BINGO
+// ==========================
 function callBingo() {
   isCalling = false;
   isPaused = false;
 
   clearTimeout(loopTimer);
-  loopTimer = null;
 
   let randomBingo = Math.floor(Math.random() * 5) + 1;
   const audio = new Audio("audio/Bingo" + randomBingo + ".mp3");
@@ -265,21 +284,24 @@ function callBingo() {
   };
 }
 
-// Reset
+// ==========================
+// RESET
+// ==========================
 function resetGame() {
   isCalling = false;
   isPaused = false;
   isPlaying = false;
 
   clearTimeout(loopTimer);
-  loopTimer = null;
 
   document.getElementById("startBtn").textContent = "Start";
 
   initGame();
 }
 
-// Init
+// ==========================
+// INIT
+// ==========================
 initGame();
 speechSynthesis.onvoiceschanged = () => {};
 </script>
