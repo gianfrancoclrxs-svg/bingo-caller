@@ -138,30 +138,41 @@ function playNumber(num) {
     isPlaying = true;
 
     const label = getLetter(num) + "-" + num;
-    const audio = new Audio("audio/" + num + ".mp3");
+    const audio = new Audio("./audio/" + num + ".mp3");
 
-    let finished = false;
+    let resolved = false;
 
     const done = () => {
-      if (finished) return;
-      finished = true;
+      if (resolved) return;
+      resolved = true;
       isPlaying = false;
       resolve();
     };
 
-    // 🎧 If audio exists
-    audio.onended = done;
-
-    // ❌ If no audio → use voice
-    audio.onerror = () => {
-      speak(label);
-      setTimeout(done, 2500);
+    // ✅ ONLY when audio truly finishes
+    audio.onended = () => {
+      done();
     };
 
-    audio.play().catch(() => {
+    // ❌ ONLY real failure
+    audio.onerror = () => {
+      console.log("Audio missing:", num);
       speak(label);
-      setTimeout(done, 2500);
-    });
+      setTimeout(done, 2000);
+    };
+
+    // 🔥 IMPORTANT: do NOT fallback immediately
+    audio.play()
+      .then(() => {
+        console.log("Playing audio:", num);
+      })
+      .catch((err) => {
+        console.log("Audio blocked or missing:", num);
+
+        // fallback to voice ONLY here
+        speak(label);
+        setTimeout(done, 2000);
+      });
   });
 }
 
