@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bingo Caller</title>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #111;
+  color: #fff;
+  text-align: center;
+  padding: 20px;
+}
+
+h1 { margin-bottom: 10px; }
+
+.current {
+  font-size: 60px;
+  margin: 20px 0;
+  font-weight: bold;
+}
+
+.recent {
+  margin-top: 20px;
+  font-size: 18px;
+}
+
+button {
+  margin: 10px;
+  padding: 12px 20px;
+  font-size: 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.start { background: #28a745; color: white; }
+.reset { background: #dc3545; color: white; }
+.bingo { background: gold; color: black; }
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+
+#overlayText {
+  font-size: 120px;
+  font-weight: bold;
+  color: gold;
+  animation: pop 0.4s ease;
+}
+
+@keyframes pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.hidden { display: none; }
+</style>
+</head>
+
+<body>
+
+<h1>🎱 Bingo Caller</h1>
+
+<div class="current" id="currentBall">--</div>
+
+<div>
+  <button class="start" id="startBtn" onclick="toggleCalling()">Start</button>
+  <button class="bingo" onclick="callBingo()">BINGO</button>
+  <button class="reset" onclick="resetGame()">Reset</button>
+</div>
+
+<div class="recent">
+  <h3>Recent Balls:</h3>
+  <div id="recentList"></div>
+</div>
+
+<div id="overlay" class="overlay hidden">
+  <div id="overlayText"></div>
+</div>
+
+<script>
+let numbers = [];
+let calledNumbers = [];
+
+let isCalling = false;
+let isPaused = false;
+let isPlaying = false;
+
+let loopTimer = null; // 🔥 prevents duplicate loops
+
+// Shuffle
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    let j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+}
+
+// Init
+function initGame() {
+  numbers = Array.from({ length: 75 }, (_, i) => i + 1);
+  shuffle(numbers);
+  calledNumbers = [];
+
+  document.getElementById("currentBall").textContent = "--";
+  document.getElementById("recentList").textContent = "";
+
+  clearTimeout(loopTimer);
+  loopTimer = null;
+}
+
+// Letter system
+function getLetter(num) {
+  if (num <= 15) return "B";
+  if (num <= 30) return "I";
+  if (num <= 45) return "N";
+  if (num <= 60) return "G";
+  return "O";
+}
+
+// Voice (slow female style)
+function speak(text) {
+  const utterance = new SpeechSynthesisUtterance(text);
+
+  const voices = speechSynthesis.getVoices();
+  const female =
+    voices.find(v => v.name.toLowerCase().includes("female")) ||
+    voices.find(v => v.lang.includes("en"));
+
+  if (female) utterance.voice = female;
+
+  utterance.rate = 0.75;
+  utterance.pitch = 1.2;
+
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utterance);
+}
+
+// Overlay
+function showOverlay(text) {
+  const overlay = document.getElementById("overlay");
+  const overlayText = document.getElementById("overlayText");
+
+  overlayText.textContent = text;
+  overlay.classList.remove("hidden");
+
+  setTimeout(() => {
+    overlay.classList.add("hidden");
+  }, 1500);
+}
+
+// 🔥 SAFE AUDIO PLAY
+function playNumber(num) {
+  return new Promise((resolve) => {
+    isPlaying = true;
+
+    const label = getLetter(num) + "-" + num;
+    const audio = new Audio("audio/" + num + ".mp3");
+
+    let finished = false;
+
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      isPlaying = false;
+      resolve();
+    };
+
+    audio.onended = () => {
+      done(); // ONLY audio → no voice, no overlay
+    };
+
+    audio.onerror = () => {
+      speak(label);
+      showOverlay(label);
+
+      setTimeout(done, 2000);
+    };
+
+    audio.play().catch(() => {
+      speak(label);
+      showOverlay(label);
+
+      setTimeout(done, 2000);
+    });
+  });
+}
+
+// 🔥 MAIN LOOP (NO DUPLICATES)
+async function loop() {
+  if (!isCalling) return;
+  if (isPaused) {
+    loopTimer = setTimeout(loop, 500);
+    return;
+  }
+  if (isPlaying) {
+    loopTimer = setTimeout(loop, 500);
+    return;
+  }
+  if (numbers.length === 0) return;
+
+  const num = numbers.pop();
+  calledNumbers.unshift(num);
+
+  document.getElementById("currentBall").textContent = num;
+  document.getElementById("recentList").textContent =
+    calledNumbers.slice(0, 10).join(", ");
+
+  await playNumber(num);
+
+  // 🔥 FIXED 7 SECOND CYCLE (NO STACKING)
+  loopTimer = setTimeout(loop, 7000);
+}
+
+// Start / Pause / Resume
+function toggleCalling() {
+  const btn = document.getElementById("startBtn");
+
+  if (!isCalling) {
+    isCalling = true;
+    isPaused = false;
+    btn.textContent = "Pause";
+    loop();
+  } 
+  else if (!isPaused) {
+    isPaused = true;
+    btn.textContent = "Resume";
+  } 
+  else {
+    isPaused = false;
+    btn.textContent = "Pause";
+    loop();
+  }
+}
+
+// Bingo
+function callBingo() {
+  isCalling = false;
+  isPaused = false;
+
+  clearTimeout(loopTimer);
+  loopTimer = null;
+
+  let randomBingo = Math.floor(Math.random() * 5) + 1;
+  const audio = new Audio("audio/Bingo" + randomBingo + ".mp3");
+
+  audio.play();
+
+  audio.onended = () => {
+    if (confirm("BINGO! Restart game?")) {
+      resetGame();
+    }
+  };
+}
+
+// Reset
+function resetGame() {
+  isCalling = false;
+  isPaused = false;
+  isPlaying = false;
+
+  clearTimeout(loopTimer);
+  loopTimer = null;
+
+  document.getElementById("startBtn").textContent = "Start";
+
+  initGame();
+}
+
+// Init
+initGame();
+speechSynthesis.onvoiceschanged = () => {};
+</script>
+
+</body>
+</html>
