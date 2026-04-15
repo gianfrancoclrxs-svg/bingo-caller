@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bingo Caller</title>
 
 <style>
@@ -15,15 +15,14 @@ body {
   padding: 10px;
 }
 
-/* MOBILE SAFE TITLE */
+/* HEADER */
 h1 {
-  font-size: 22px;
-  margin: 10px 0;
+  font-size: 20px;
 }
 
 /* CURRENT BALL */
 .current {
-  font-size: 50px;
+  font-size: 55px;
   margin: 10px;
   font-weight: bold;
   color: gold;
@@ -48,23 +47,24 @@ button {
   margin-top: 5px;
 }
 
-/* BOARD SCROLL */
+/* 🔥 VERTICAL GRID */
 .board-wrapper {
-  overflow-x: auto;
+  display: flex;
+  justify-content: center;
   margin-top: 15px;
 }
 
 .board {
   display: grid;
-  grid-template-columns: repeat(15, 40px);
-  gap: 4px;
-  width: max-content;
-  margin: auto;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  max-width: 250px;
 }
 
+/* CELL */
 .cell {
-  width: 40px;
-  height: 40px;
+  width: 45px;
+  height: 45px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -73,11 +73,13 @@ button {
   font-size: 12px;
 }
 
+/* CALLED */
 .called {
   background: #444;
   color: #888;
 }
 
+/* LAST CALLED */
 .last {
   background: red !important;
   color: white !important;
@@ -108,7 +110,8 @@ let calledNumbers = [];
 
 let isCalling = false;
 let isPaused = false;
-let loopTimer = null;
+
+let interval = null;
 let lastCalled = null;
 
 // ================= INIT =================
@@ -138,13 +141,11 @@ function getLetter(num) {
   return "O";
 }
 
-// ================= AUDIO (FIXED) =================
+// ================= AUDIO =================
 function playAudio(num) {
   const audio = new Audio("./audio/" + num + ".mp3");
-  audio.volume = 1;
-
   audio.play().catch(err => {
-    console.log("Audio blocked:", err);
+    console.log("Audio error:", err);
   });
 }
 
@@ -165,16 +166,16 @@ function buildBoard() {
 // ================= UPDATE BOARD =================
 function updateBoard(num) {
   if (lastCalled) {
-    document.getElementById("cell-" + lastCalled).classList.remove("last");
+    document.getElementById("cell-" + lastCalled)?.classList.remove("last");
   }
 
-  document.getElementById("cell-" + num).classList.add("called", "last");
+  document.getElementById("cell-" + num)?.classList.add("called", "last");
 
   lastCalled = num;
 }
 
-// ================= NEXT BALL =================
-function callNext() {
+// ================= CALL BALL =================
+function callBall() {
   if (!isCalling || isPaused) return;
   if (numbers.length === 0) return;
 
@@ -190,40 +191,49 @@ function callNext() {
 
   playAudio(num);
   updateBoard(num);
+}
 
-  loopTimer = setTimeout(callNext, 7000);
+// ================= LOOP (ROBUST FIX) =================
+function startLoop() {
+  clearInterval(interval);
+
+  interval = setInterval(() => {
+    if (!isCalling || isPaused) return;
+
+    callBall();
+
+    if (numbers.length === 0) {
+      clearInterval(interval);
+    }
+  }, 7000);
 }
 
 // ================= START / PAUSE =================
 function toggleCalling() {
   const btn = document.getElementById("startBtn");
 
-  // 🔥 IMPORTANT: unlock audio on first click (mobile fix)
-  const unlock = new Audio("./audio/1.mp3");
-  unlock.play().catch(() => {});
-
   if (!isCalling) {
     isCalling = true;
     isPaused = false;
     btn.textContent = "Pause";
-    callNext();
+    callBall();
+    startLoop();
   } 
   else if (!isPaused) {
     isPaused = true;
     btn.textContent = "Resume";
-    clearTimeout(loopTimer);
   } 
   else {
     isPaused = false;
     btn.textContent = "Pause";
-    callNext();
+    startLoop();
   }
 }
 
 // ================= BINGO =================
 function callBingo() {
   isCalling = false;
-  clearTimeout(loopTimer);
+  clearInterval(interval);
 
   let rand = Math.floor(Math.random() * 5) + 1;
   new Audio("./audio/Bingo" + rand + ".mp3").play();
@@ -233,7 +243,8 @@ function callBingo() {
 function resetGame() {
   isCalling = false;
   isPaused = false;
-  clearTimeout(loopTimer);
+
+  clearInterval(interval);
 
   document.getElementById("startBtn").textContent = "Start";
 
