@@ -7,17 +7,15 @@
 
 <style>
 body {
-  font-family: Arial, sans-serif;
+  font-family: Arial;
   background: #111;
   color: #fff;
   text-align: center;
-  padding: 20px;
 }
 
 .current {
   font-size: 60px;
-  margin: 20px 0;
-  font-weight: bold;
+  margin: 20px;
 }
 
 button {
@@ -28,13 +26,9 @@ button {
   cursor: pointer;
 }
 
-.start { background: #28a745; color: white; }
-.reset { background: #dc3545; color: white; }
+.start { background: green; color: white; }
+.reset { background: red; color: white; }
 .bingo { background: gold; color: black; }
-
-.recent {
-  margin-top: 20px;
-}
 </style>
 </head>
 
@@ -44,16 +38,11 @@ button {
 
 <div class="current" id="currentBall">--</div>
 
-<div>
-  <button class="start" id="startBtn" onclick="toggleCalling()">Start</button>
-  <button class="bingo" onclick="callBingo()">BINGO</button>
-  <button class="reset" onclick="resetGame()">Reset</button>
-</div>
+<button class="start" id="startBtn" onclick="toggleCalling()">Start</button>
+<button class="bingo" onclick="callBingo()">BINGO</button>
+<button class="reset" onclick="resetGame()">Reset</button>
 
-<div class="recent">
-  <h3>Recent Balls:</h3>
-  <div id="recentList"></div>
-</div>
+<div id="recentList"></div>
 
 <script>
 let numbers = [];
@@ -61,15 +50,12 @@ let calledNumbers = [];
 
 let isCalling = false;
 let isPaused = false;
-let isPlaying = false;
-let loopTimer = null;
 
-let speaking = false;
+let loopInterval = null;
+
 let selectedVoice = null;
 
-// ==========================
-// INIT
-// ==========================
+// ================= INIT =================
 function initGame() {
   numbers = Array.from({ length: 75 }, (_, i) => i + 1);
 
@@ -79,16 +65,11 @@ function initGame() {
   }
 
   calledNumbers = [];
-
   document.getElementById("currentBall").textContent = "--";
   document.getElementById("recentList").textContent = "";
-
-  clearTimeout(loopTimer);
 }
 
-// ==========================
-// LETTER
-// ==========================
+// ================= LETTER =================
 function getLetter(num) {
   if (num <= 15) return "B";
   if (num <= 30) return "I";
@@ -97,107 +78,45 @@ function getLetter(num) {
   return "O";
 }
 
-// ==========================
-// VOICE SETUP
-// ==========================
+// ================= VOICE =================
 function loadVoices() {
   const voices = speechSynthesis.getVoices();
   if (!voices.length) return;
 
   selectedVoice =
     voices.find(v => v.name.toLowerCase().includes("female")) ||
-    voices.find(v => v.lang.includes("en-US")) ||
     voices[0];
 }
 
 speechSynthesis.onvoiceschanged = loadVoices;
 setTimeout(loadVoices, 500);
 
-// ==========================
-// SPEAK (NO DUPLICATE)
-// ==========================
 function speak(text) {
-  return new Promise((resolve) => {
-    if (!selectedVoice) {
-      resolve();
-      return;
-    }
+  if (!selectedVoice) return;
 
-    if (speaking) {
-      speechSynthesis.cancel();
-    }
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.voice = selectedVoice;
+  utterance.rate = 0.75;
+  utterance.pitch = 1.2;
 
-    speaking = true;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utterance);
+}
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.voice = selectedVoice;
-    utterance.rate = 0.75;
-    utterance.pitch = 1.2;
+// ================= PLAY =================
+function play(num) {
+  const label = getLetter(num) + "-" + num;
+  const audio = new Audio("./audio/" + num + ".mp3");
 
-    utterance.onend = () => {
-      speaking = false;
-      resolve();
-    };
-
-    speechSynthesis.cancel();
-    speechSynthesis.speak(utterance);
+  audio.play().catch(() => {
+    // fallback to voice
+    speak(label);
   });
 }
 
-// ==========================
-// PLAY NUMBER (FIXED)
-// ==========================
-function playNumber(num) {
-  return new Promise((resolve) => {
-    isPlaying = true;
-
-    const label = getLetter(num) + "-" + num;
-    const audio = new Audio("./audio/" + num + ".mp3");
-
-    let finished = false;
-
-    const done = () => {
-      if (finished) return;
-      finished = true;
-      isPlaying = false;
-      resolve();
-    };
-
-    // 🎧 AUDIO SUCCESS
-    audio.onended = () => {
-      console.log("Audio finished:", num);
-      done();
-    };
-
-    // ❌ ONLY if truly missing
-    audio.onerror = async () => {
-      console.log("Audio missing:", num);
-      await speak(label);
-      done();
-    };
-
-    // 🔥 TRY PLAY (no aggressive fallback)
-    audio.play().then(() => {
-      console.log("Playing audio:", num);
-    }).catch(() => {
-      console.log("Playback blocked, using voice:", num);
-      speak(label).then(done);
-    });
-  });
-}
-
-// ==========================
-// LOOP (PERFECT TIMING)
-// ==========================
-async function loop() {
-  if (!isCalling) return;
-
-  if (isPaused || isPlaying) {
-    loopTimer = setTimeout(loop, 300);
-    return;
-  }
-
-  if (numbers.length === 0) return;
+// ================= LOOP (TIMER BASED) =================
+function callNext() {
+  if (!isCalling || isPaused || numbers.length === 0) return;
 
   const num = numbers.pop();
   calledNumbers.unshift(num);
@@ -206,19 +125,10 @@ async function loop() {
   document.getElementById("recentList").textContent =
     calledNumbers.slice(0, 10).join(", ");
 
-  const start = Date.now();
-
-  await playNumber(num);
-
-  const elapsed = Date.now() - start;
-  const delay = Math.max(0, 7000 - elapsed);
-
-  loopTimer = setTimeout(loop, delay);
+  play(num);
 }
 
-// ==========================
-// START / PAUSE
-// ==========================
+// ================= START / PAUSE =================
 function toggleCalling() {
   const btn = document.getElementById("startBtn");
 
@@ -226,41 +136,41 @@ function toggleCalling() {
     isCalling = true;
     isPaused = false;
     btn.textContent = "Pause";
-    loop();
-  } 
-  else if (!isPaused) {
+
+    callNext();
+
+    // 🔥 FIXED: strict 7-second interval
+    loopInterval = setInterval(callNext, 7000);
+
+  } else if (!isPaused) {
     isPaused = true;
     btn.textContent = "Resume";
-  } 
-  else {
+    clearInterval(loopInterval);
+
+  } else {
     isPaused = false;
     btn.textContent = "Pause";
-    loop();
+
+    callNext();
+    loopInterval = setInterval(callNext, 7000);
   }
 }
 
-// ==========================
-// BINGO
-// ==========================
+// ================= BINGO =================
 function callBingo() {
   isCalling = false;
-  isPaused = false;
-
-  clearTimeout(loopTimer);
+  clearInterval(loopInterval);
 
   let rand = Math.floor(Math.random() * 5) + 1;
   new Audio("./audio/Bingo" + rand + ".mp3").play();
 }
 
-// ==========================
-// RESET
-// ==========================
+// ================= RESET =================
 function resetGame() {
   isCalling = false;
   isPaused = false;
-  isPlaying = false;
 
-  clearTimeout(loopTimer);
+  clearInterval(loopInterval);
 
   document.getElementById("startBtn").textContent = "Start";
 
