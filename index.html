@@ -163,18 +163,25 @@ function playNumber(num) {
       resolve();
     };
 
+    // 🎧 AUDIO SUCCESS
     audio.onended = () => {
+      console.log("Audio finished:", num);
       done();
     };
 
+    // ❌ ONLY if truly missing
     audio.onerror = async () => {
+      console.log("Audio missing:", num);
       await speak(label);
       done();
     };
 
-    audio.play().catch(async () => {
-      await speak(label);
-      done();
+    // 🔥 TRY PLAY (no aggressive fallback)
+    audio.play().then(() => {
+      console.log("Playing audio:", num);
+    }).catch(() => {
+      console.log("Playback blocked, using voice:", num);
+      speak(label).then(done);
     });
   });
 }
@@ -204,9 +211,9 @@ async function loop() {
   await playNumber(num);
 
   const elapsed = Date.now() - start;
-  const remaining = Math.max(0, 7000 - elapsed);
+  const delay = Math.max(0, 7000 - elapsed);
 
-  loopTimer = setTimeout(loop, remaining);
+  loopTimer = setTimeout(loop, delay);
 }
 
 // ==========================
@@ -214,11 +221,6 @@ async function loop() {
 // ==========================
 function toggleCalling() {
   const btn = document.getElementById("startBtn");
-
-  // 🔥 unlock audio + voice
-  const unlock = new SpeechSynthesisUtterance(" ");
-  speechSynthesis.speak(unlock);
-  speechSynthesis.cancel();
 
   if (!isCalling) {
     isCalling = true;
