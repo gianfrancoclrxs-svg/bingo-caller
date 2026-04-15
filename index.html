@@ -50,8 +50,7 @@ let calledNumbers = [];
 
 let isCalling = false;
 let isPaused = false;
-
-let loopInterval = null;
+let isPlaying = false;
 
 let selectedVoice = null;
 
@@ -65,6 +64,7 @@ function initGame() {
   }
 
   calledNumbers = [];
+
   document.getElementById("currentBall").textContent = "--";
   document.getElementById("recentList").textContent = "";
 }
@@ -92,31 +92,68 @@ speechSynthesis.onvoiceschanged = loadVoices;
 setTimeout(loadVoices, 500);
 
 function speak(text) {
-  if (!selectedVoice) return;
+  return new Promise((resolve) => {
+    if (!selectedVoice) {
+      resolve();
+      return;
+    }
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.voice = selectedVoice;
-  utterance.rate = 0.75;
-  utterance.pitch = 1.2;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = selectedVoice;
+    utterance.rate = 0.75;
+    utterance.pitch = 1.2;
 
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utterance);
-}
+    utterance.onend = resolve;
 
-// ================= PLAY =================
-function play(num) {
-  const label = getLetter(num) + "-" + num;
-  const audio = new Audio("./audio/" + num + ".mp3");
-
-  audio.play().catch(() => {
-    // fallback to voice
-    speak(label);
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utterance);
   });
 }
 
-// ================= LOOP (TIMER BASED) =================
-function callNext() {
-  if (!isCalling || isPaused || numbers.length === 0) return;
+// ================= PLAY =================
+function playNumber(num) {
+  return new Promise((resolve) => {
+    isPlaying = true;
+
+    const label = getLetter(num) + "-" + num;
+    const audio = new Audio("./audio/" + num + ".mp3");
+
+    let finished = false;
+
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      isPlaying = false;
+      resolve();
+    };
+
+    // 🎧 If audio exists
+    audio.onended = done;
+
+    // ❌ If missing → voice
+    audio.onerror = async () => {
+      await speak(label);
+      done();
+    };
+
+    // Try play
+    audio.play().catch(async () => {
+      await speak(label);
+      done();
+    });
+  });
+}
+
+// ================= LOOP =================
+async function loop() {
+  if (!isCalling) return;
+
+  if (isPaused || isPlaying) {
+    setTimeout(loop, 300);
+    return;
+  }
+
+  if (numbers.length === 0) return;
 
   const num = numbers.pop();
   calledNumbers.unshift(num);
@@ -125,10 +162,13 @@ function callNext() {
   document.getElementById("recentList").textContent =
     calledNumbers.slice(0, 10).join(", ");
 
-  play(num);
+  await playNumber(num);
+
+  // 🔥 WAIT 7 seconds AFTER FINISH
+  setTimeout(loop, 7000);
 }
 
-// ================= START / PAUSE =================
+// ================= START =================
 function toggleCalling() {
   const btn = document.getElementById("startBtn");
 
@@ -136,30 +176,22 @@ function toggleCalling() {
     isCalling = true;
     isPaused = false;
     btn.textContent = "Pause";
-
-    callNext();
-
-    // 🔥 FIXED: strict 7-second interval
-    loopInterval = setInterval(callNext, 7000);
-
-  } else if (!isPaused) {
+    loop();
+  } 
+  else if (!isPaused) {
     isPaused = true;
     btn.textContent = "Resume";
-    clearInterval(loopInterval);
-
-  } else {
+  } 
+  else {
     isPaused = false;
     btn.textContent = "Pause";
-
-    callNext();
-    loopInterval = setInterval(callNext, 7000);
+    loop();
   }
 }
 
 // ================= BINGO =================
 function callBingo() {
   isCalling = false;
-  clearInterval(loopInterval);
 
   let rand = Math.floor(Math.random() * 5) + 1;
   new Audio("./audio/Bingo" + rand + ".mp3").play();
@@ -169,8 +201,7 @@ function callBingo() {
 function resetGame() {
   isCalling = false;
   isPaused = false;
-
-  clearInterval(loopInterval);
+  isPlaying = false;
 
   document.getElementById("startBtn").textContent = "Start";
 
