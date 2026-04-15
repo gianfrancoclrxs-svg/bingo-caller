@@ -64,6 +64,9 @@ let isPaused = false;
 let isPlaying = false;
 let loopTimer = null;
 
+let speaking = false;
+let selectedVoice = null;
+
 // ==========================
 // INIT
 // ==========================
@@ -95,11 +98,8 @@ function getLetter(num) {
 }
 
 // ==========================
-// 🔊 VOICE FIX (VERCEL SAFE)
+// VOICE SETUP
 // ==========================
-let selectedVoice = null;
-
-// Load voices properly
 function loadVoices() {
   const voices = speechSynthesis.getVoices();
   if (!voices.length) return;
@@ -110,28 +110,42 @@ function loadVoices() {
     voices[0];
 }
 
-// Ensure voices load
 speechSynthesis.onvoiceschanged = loadVoices;
 setTimeout(loadVoices, 500);
 
-// Speak
+// ==========================
+// SPEAK (NO DUPLICATE)
+// ==========================
 function speak(text) {
-  if (!selectedVoice) {
-    console.warn("No voice available");
-    return;
-  }
+  return new Promise((resolve) => {
+    if (!selectedVoice) {
+      resolve();
+      return;
+    }
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.voice = selectedVoice;
-  utterance.rate = 0.75;
-  utterance.pitch = 1.2;
+    if (speaking) {
+      speechSynthesis.cancel();
+    }
 
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utterance);
+    speaking = true;
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = selectedVoice;
+    utterance.rate = 0.75;
+    utterance.pitch = 1.2;
+
+    utterance.onend = () => {
+      speaking = false;
+      resolve();
+    };
+
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utterance);
+  });
 }
 
 // ==========================
-// PLAY NUMBER
+// PLAY NUMBER (FIXED)
 // ==========================
 function playNumber(num) {
   return new Promise((resolve) => {
@@ -140,50 +154,39 @@ function playNumber(num) {
     const label = getLetter(num) + "-" + num;
     const audio = new Audio("./audio/" + num + ".mp3");
 
-    let resolved = false;
+    let finished = false;
 
     const done = () => {
-      if (resolved) return;
-      resolved = true;
+      if (finished) return;
+      finished = true;
       isPlaying = false;
       resolve();
     };
 
-    // ✅ ONLY when audio truly finishes
     audio.onended = () => {
       done();
     };
 
-    // ❌ ONLY real failure
-    audio.onerror = () => {
-      console.log("Audio missing:", num);
-      speak(label);
-      setTimeout(done, 2000);
+    audio.onerror = async () => {
+      await speak(label);
+      done();
     };
 
-    // 🔥 IMPORTANT: do NOT fallback immediately
-    audio.play()
-      .then(() => {
-        console.log("Playing audio:", num);
-      })
-      .catch((err) => {
-        console.log("Audio blocked or missing:", num);
-
-        // fallback to voice ONLY here
-        speak(label);
-        setTimeout(done, 2000);
-      });
+    audio.play().catch(async () => {
+      await speak(label);
+      done();
+    });
   });
 }
 
 // ==========================
-// LOOP
+// LOOP (PERFECT TIMING)
 // ==========================
-function loop() {
+async function loop() {
   if (!isCalling) return;
 
   if (isPaused || isPlaying) {
-    loopTimer = setTimeout(loop, 500);
+    loopTimer = setTimeout(loop, 300);
     return;
   }
 
@@ -196,9 +199,14 @@ function loop() {
   document.getElementById("recentList").textContent =
     calledNumbers.slice(0, 10).join(", ");
 
-  playNumber(num).then(() => {
-    loopTimer = setTimeout(loop, 7000);
-  });
+  const start = Date.now();
+
+  await playNumber(num);
+
+  const elapsed = Date.now() - start;
+  const remaining = Math.max(0, 7000 - elapsed);
+
+  loopTimer = setTimeout(loop, remaining);
 }
 
 // ==========================
@@ -207,7 +215,7 @@ function loop() {
 function toggleCalling() {
   const btn = document.getElementById("startBtn");
 
-  // 🔥 CRITICAL: unlock voice/audio
+  // 🔥 unlock audio + voice
   const unlock = new SpeechSynthesisUtterance(" ");
   speechSynthesis.speak(unlock);
   speechSynthesis.cancel();
@@ -239,7 +247,7 @@ function callBingo() {
   clearTimeout(loopTimer);
 
   let rand = Math.floor(Math.random() * 5) + 1;
-  new Audio("audio/Bingo" + rand + ".mp3").play();
+  new Audio("./audio/Bingo" + rand + ".mp3").play();
 }
 
 // ==========================
