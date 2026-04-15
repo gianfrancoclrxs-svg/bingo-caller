@@ -11,16 +11,22 @@ body {
   background: #111;
   color: #fff;
   text-align: center;
+  margin: 0;
+  padding: 20px;
 }
 
+/* CURRENT BALL */
 .current {
-  font-size: 60px;
-  margin: 20px;
+  font-size: 70px;
+  margin: 10px;
+  font-weight: bold;
+  color: gold;
 }
 
+/* BUTTONS */
 button {
-  margin: 10px;
-  padding: 12px 20px;
+  margin: 8px;
+  padding: 10px 18px;
   border-radius: 8px;
   border: none;
   cursor: pointer;
@@ -29,6 +35,41 @@ button {
 .start { background: green; color: white; }
 .reset { background: red; color: white; }
 .bingo { background: gold; color: black; }
+
+/* RECENT */
+#recentList {
+  margin-top: 10px;
+  font-size: 18px;
+}
+
+/* BOARD */
+.board {
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  gap: 5px;
+  margin-top: 25px;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cell {
+  padding: 8px;
+  background: #222;
+  border-radius: 5px;
+  font-size: 14px;
+}
+
+.called {
+  background: #444;
+  color: #888;
+}
+
+.last {
+  background: red !important;
+  color: white !important;
+  font-weight: bold;
+}
 </style>
 </head>
 
@@ -44,15 +85,18 @@ button {
 
 <div id="recentList"></div>
 
+<!-- BOARD -->
+<div class="board" id="board"></div>
+
 <script>
 let numbers = [];
 let calledNumbers = [];
 
 let isCalling = false;
 let isPaused = false;
-let isPlaying = false;
+let loopTimer = null;
 
-let selectedVoice = null;
+let lastCalled = null;
 
 // ================= INIT =================
 function initGame() {
@@ -64,9 +108,12 @@ function initGame() {
   }
 
   calledNumbers = [];
+  lastCalled = null;
 
   document.getElementById("currentBall").textContent = "--";
   document.getElementById("recentList").textContent = "";
+
+  buildBoard();
 }
 
 // ================= LETTER =================
@@ -78,97 +125,61 @@ function getLetter(num) {
   return "O";
 }
 
-// ================= VOICE =================
-function loadVoices() {
-  const voices = speechSynthesis.getVoices();
-  if (!voices.length) return;
-
-  selectedVoice =
-    voices.find(v => v.name.toLowerCase().includes("female")) ||
-    voices[0];
-}
-
-speechSynthesis.onvoiceschanged = loadVoices;
-setTimeout(loadVoices, 500);
-
-function speak(text) {
-  return new Promise((resolve) => {
-    if (!selectedVoice) {
-      resolve();
-      return;
-    }
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.voice = selectedVoice;
-    utterance.rate = 0.75;
-    utterance.pitch = 1.2;
-
-    utterance.onend = resolve;
-
-    speechSynthesis.cancel();
-    speechSynthesis.speak(utterance);
+// ================= AUDIO =================
+function playAudio(num) {
+  const audio = new Audio("./audio/" + num + ".mp3");
+  audio.play().catch(err => {
+    console.log("Audio failed:", num, err);
   });
 }
 
-// ================= PLAY =================
-function playNumber(num) {
-  return new Promise((resolve) => {
-    isPlaying = true;
+// ================= BOARD =================
+function buildBoard() {
+  const board = document.getElementById("board");
+  board.innerHTML = "";
 
-    const label = getLetter(num) + "-" + num;
-    const audio = new Audio("./audio/" + num + ".mp3");
-
-    let finished = false;
-
-    const done = () => {
-      if (finished) return;
-      finished = true;
-      isPlaying = false;
-      resolve();
-    };
-
-    // 🎧 If audio exists
-    audio.onended = done;
-
-    // ❌ If missing → voice
-    audio.onerror = async () => {
-      await speak(label);
-      done();
-    };
-
-    // Try play
-    audio.play().catch(async () => {
-      await speak(label);
-      done();
-    });
-  });
+  for (let i = 1; i <= 75; i++) {
+    const div = document.createElement("div");
+    div.className = "cell";
+    div.id = "cell-" + i;
+    div.innerText = getLetter(i) + i;
+    board.appendChild(div);
+  }
 }
 
-// ================= LOOP =================
-async function loop() {
-  if (!isCalling) return;
-
-  if (isPaused || isPlaying) {
-    setTimeout(loop, 300);
-    return;
+// ================= UPDATE BOARD =================
+function updateBoard(num) {
+  if (lastCalled) {
+    document.getElementById("cell-" + lastCalled).classList.remove("last");
   }
 
+  document.getElementById("cell-" + num).classList.add("called", "last");
+
+  lastCalled = num;
+}
+
+// ================= NEXT BALL =================
+function callNext() {
+  if (!isCalling || isPaused) return;
   if (numbers.length === 0) return;
 
   const num = numbers.pop();
-  calledNumbers.unshift(num);
+  const label = getLetter(num) + num;
 
-  document.getElementById("currentBall").textContent = num;
+  calledNumbers.unshift(label);
+
+  document.getElementById("currentBall").textContent = label;
+
   document.getElementById("recentList").textContent =
-    calledNumbers.slice(0, 10).join(", ");
+    calledNumbers.slice(0, 10).join(" • ");
 
-  await playNumber(num);
+  playAudio(num);
+  updateBoard(num);
 
-  // 🔥 WAIT 7 seconds AFTER FINISH
-  setTimeout(loop, 7000);
+  loopTimer = setTimeout(callNext, 7000);
 }
 
-// ================= START =================
+// ================= START / PAUSE =================
 function toggleCalling() {
   const btn = document.getElementById("startBtn");
 
@@ -176,22 +187,24 @@ function toggleCalling() {
     isCalling = true;
     isPaused = false;
     btn.textContent = "Pause";
-    loop();
+    callNext();
   } 
   else if (!isPaused) {
     isPaused = true;
     btn.textContent = "Resume";
+    clearTimeout(loopTimer);
   } 
   else {
     isPaused = false;
     btn.textContent = "Pause";
-    loop();
+    callNext();
   }
 }
 
 // ================= BINGO =================
 function callBingo() {
   isCalling = false;
+  clearTimeout(loopTimer);
 
   let rand = Math.floor(Math.random() * 5) + 1;
   new Audio("./audio/Bingo" + rand + ".mp3").play();
@@ -201,7 +214,7 @@ function callBingo() {
 function resetGame() {
   isCalling = false;
   isPaused = false;
-  isPlaying = false;
+  clearTimeout(loopTimer);
 
   document.getElementById("startBtn").textContent = "Start";
 
