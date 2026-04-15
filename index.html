@@ -27,41 +27,31 @@ h1 { font-size: 20px; }
 button {
   margin: 5px;
   padding: 10px 14px;
-  border: none;
   border-radius: 8px;
+  border: none;
 }
 
 .start { background: green; color: white; }
 .reset { background: red; color: white; }
 .bingo { background: gold; color: black; }
 
-/* recent */
 #recentList {
   font-size: 14px;
   margin-top: 5px;
 }
 
-/* grid */
-.board-wrapper {
-  display: flex;
-  justify-content: center;
-  margin-top: 15px;
-}
-
+/* 🔥 CUSTOM GRID (YOUR REQUEST) */
 .board {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 6px;
-  max-width: 250px;
+  max-width: 300px;
+  margin: 15px auto;
 }
 
 .cell {
-  width: 45px;
-  height: 45px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: #222;
+  padding: 10px;
   border-radius: 6px;
   font-size: 12px;
 }
@@ -77,60 +67,71 @@ button {
 
 <div class="current" id="currentBall">--</div>
 
-<button class="start" id="startBtn" onclick="startGame()">Start</button>
+<button class="start" id="startBtn" onclick="toggle()">Start</button>
 <button class="bingo" onclick="bingo()">BINGO</button>
 <button class="reset" onclick="reset()">Reset</button>
 
 <div id="recentList"></div>
 
-<div class="board-wrapper">
-  <div class="board" id="board"></div>
-</div>
+<div class="board" id="board"></div>
 
 <script>
-let numbers = [];
-let called = [];
-let timer = null;
-let running = false;
-let last = null;
+let numbers=[];
+let called=[];
+let timer=null;
+let running=false;
+let last=null;
 
 // ================= INIT =================
-function init() {
-  numbers = Array.from({length:75}, (_,i)=>i+1);
+function init(){
+  numbers=Array.from({length:75},(_,i)=>i+1);
 
-  // shuffle
-  for (let i=numbers.length-1;i>0;i--) {
+  for(let i=numbers.length-1;i>0;i--){
     let j=Math.floor(Math.random()*(i+1));
     [numbers[i],numbers[j]]=[numbers[j],numbers[i]];
   }
 
-  called = [];
-  last = null;
+  called=[];
+  last=null;
 
   document.getElementById("currentBall").innerText="--";
   document.getElementById("recentList").innerText="";
 
-  buildBoard();
+  buildGrid();
 }
 
-// ================= BOARD =================
-function buildBoard() {
-  const board = document.getElementById("board");
+// ================= GRID (YOUR CUSTOM LAYOUT) =================
+function buildGrid(){
+  const board=document.getElementById("board");
   board.innerHTML="";
 
-  for(let i=1;i<=75;i++){
-    let d=document.createElement("div");
-    d.className="cell";
-    d.id="c"+i;
-    d.innerText=i;
-    board.appendChild(d);
+  // 🔥 EXACT ORDER YOU WANTED:
+  // 1,16,31,46,61
+  // ...
+  for(let col=0; col<15; col++){
+    for(let row=0; row<5; row++){
+      let num = col + 1 + row*15;
+
+      let div=document.createElement("div");
+      div.className="cell";
+      div.id="c"+num;
+      div.innerText=num;
+
+      board.appendChild(div);
+    }
   }
 }
 
-// ================= AUDIO (DIRECT FILE MAP) =================
+// ================= AUDIO FIX (CRITICAL) =================
 function play(num){
-  const audio = new Audio(`audio/${num}.mp3`);
-  audio.play().catch(e=>console.log("audio fail",e));
+  const audio=new Audio(`audio/${num}.mp3`);
+
+  // 🔥 force reload for mobile fix
+  audio.src=`audio/${num}.mp3`;
+
+  audio.play().catch(e=>{
+    console.log("audio blocked",e);
+  });
 }
 
 // ================= CALL =================
@@ -138,20 +139,20 @@ function call(){
   if(!running) return;
   if(numbers.length===0) return;
 
-  let num = numbers.pop();
+  let num=numbers.pop();
 
   called.unshift(num);
 
   document.getElementById("currentBall").innerText=num;
-  document.getElementById("recentList").innerText =
+  document.getElementById("recentList").innerText=
     called.slice(0,10).join(" • ");
 
-  // highlight board
-  if(last) document.getElementById("c"+last).classList.remove("last");
-  document.getElementById("c"+num).classList.add("called","last");
+  // highlight
+  if(last) document.getElementById("c"+last)?.classList.remove("last");
+
+  document.getElementById("c"+num)?.classList.add("called","last");
   last=num;
 
-  // 🔊 play direct file
   play(num);
 }
 
@@ -159,14 +160,14 @@ function call(){
 function loop(){
   clearInterval(timer);
 
-  timer = setInterval(()=>{
+  timer=setInterval(()=>{
     if(!running) return;
     call();
   },7000);
 }
 
-// ================= START =================
-function startGame(){
+// ================= TOGGLE =================
+function toggle(){
   let btn=document.getElementById("startBtn");
 
   if(!running){
