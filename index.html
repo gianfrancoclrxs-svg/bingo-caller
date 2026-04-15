@@ -15,12 +15,10 @@ body {
   padding: 10px;
 }
 
-/* HEADER */
 h1 {
   font-size: 20px;
 }
 
-/* CURRENT BALL */
 .current {
   font-size: 55px;
   margin: 10px;
@@ -28,7 +26,6 @@ h1 {
   color: gold;
 }
 
-/* BUTTONS */
 button {
   margin: 5px;
   padding: 10px 14px;
@@ -41,13 +38,12 @@ button {
 .reset { background: red; color: white; }
 .bingo { background: gold; color: black; }
 
-/* RECENT */
 #recentList {
   font-size: 14px;
   margin-top: 5px;
 }
 
-/* 🔥 VERTICAL GRID */
+/* VERTICAL GRID */
 .board-wrapper {
   display: flex;
   justify-content: center;
@@ -61,7 +57,6 @@ button {
   max-width: 250px;
 }
 
-/* CELL */
 .cell {
   width: 45px;
   height: 45px;
@@ -73,13 +68,11 @@ button {
   font-size: 12px;
 }
 
-/* CALLED */
 .called {
   background: #444;
   color: #888;
 }
 
-/* LAST CALLED */
 .last {
   background: red !important;
   color: white !important;
@@ -114,6 +107,9 @@ let isPaused = false;
 let interval = null;
 let lastCalled = null;
 
+// 🔥 AUDIO CACHE (IMPORTANT FIX)
+let audioCache = {};
+
 // ================= INIT =================
 function initGame() {
   numbers = Array.from({ length: 75 }, (_, i) => i + 1);
@@ -130,6 +126,16 @@ function initGame() {
   document.getElementById("recentList").textContent = "";
 
   buildBoard();
+  preloadAudio();
+}
+
+// ================= PRELOAD AUDIO =================
+function preloadAudio() {
+  for (let i = 1; i <= 75; i++) {
+    const audio = new Audio("./audio/" + i + ".mp3");
+    audio.preload = "auto";
+    audioCache[i] = audio;
+  }
 }
 
 // ================= LETTER =================
@@ -141,12 +147,25 @@ function getLetter(num) {
   return "O";
 }
 
-// ================= AUDIO =================
+// ================= AUDIO FIXED =================
 function playAudio(num) {
-  const audio = new Audio("./audio/" + num + ".mp3");
-  audio.play().catch(err => {
-    console.log("Audio error:", err);
-  });
+  const audio = audioCache[num];
+  if (!audio) return;
+
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+
+    const playPromise = audio.play();
+
+    if (playPromise !== undefined) {
+      playPromise.catch(err => {
+        console.log("Audio blocked:", err);
+      });
+    }
+  } catch (e) {
+    console.log("Audio error:", e);
+  }
 }
 
 // ================= BOARD =================
@@ -175,7 +194,7 @@ function updateBoard(num) {
 }
 
 // ================= CALL BALL =================
-function callBall() {
+function callNext() {
   if (!isCalling || isPaused) return;
   if (numbers.length === 0) return;
 
@@ -193,14 +212,14 @@ function callBall() {
   updateBoard(num);
 }
 
-// ================= LOOP (ROBUST FIX) =================
+// ================= LOOP =================
 function startLoop() {
   clearInterval(interval);
 
   interval = setInterval(() => {
     if (!isCalling || isPaused) return;
 
-    callBall();
+    callNext();
 
     if (numbers.length === 0) {
       clearInterval(interval);
@@ -212,11 +231,16 @@ function startLoop() {
 function toggleCalling() {
   const btn = document.getElementById("startBtn");
 
+  // 🔥 unlock audio (mobile fix)
+  const unlock = new Audio("./audio/1.mp3");
+  unlock.play().catch(() => {});
+
   if (!isCalling) {
     isCalling = true;
     isPaused = false;
     btn.textContent = "Pause";
-    callBall();
+
+    callNext();
     startLoop();
   } 
   else if (!isPaused) {
